@@ -1,4 +1,4 @@
-﻿using Ektron.Cms;
+using Ektron.Cms;
 using Ektron.Cms.BusinessObjects.ContentWorkflow;
 using Ektron.Cms.Content;
 using Ektron.Cms.Framework.Content;
@@ -213,6 +213,14 @@ public class ContentTypeInformation
         this.Name = ContentTypeData.SmartformTitle;
         this.ID = ContentTypeData.Id;
 
+        if (string.IsNullOrWhiteSpace(ContentTypeData.FieldList))
+        {
+            throw new ApplicationException("Smartform loading error for " + ContentTypeData.Id +":" + ContentTypeData.SmartformTitle);
+            //return;
+
+        }
+
+        
         var typeFields = GetFields(ContentTypeData.FieldList);
 
         this.Fields = ConvertFieldsToHtml(typeFields);
@@ -225,8 +233,23 @@ public class ContentTypeInformation
             List<long> folderIds = null;
 
             decimal tmpVelocity = CalculateVelocity(ContentTypeData.Id, out folderIds);
+            List<FolderData> typeFolders = new List<FolderData>();
+            if (folderIds.Count > 2000)
+            {
+                var splitFids = SliceBy(folderIds, 2000);
+                
+                foreach (var splitfid in splitFids)
+                {
+                    var typefolderdata = GetFolders(splitfid);
+                    typeFolders.Concat(typefolderdata);
+                }
+            }
+            else
+            {
+                typeFolders = GetFolders(folderIds);
+            }
 
-            List<FolderData> typeFolders = GetFolders(folderIds);
+
             var folderArray = typeFolders.Select(f => f.NameWithPath).ToArray();
             this.Folders = ConvertFieldsToHtml(folderArray);
 
@@ -247,6 +270,7 @@ public class ContentTypeInformation
         if (folderIds.Any())
         {
             FolderCriteria criteria = GetFolderCriteria(folderIds);
+           
             folderList = FolderCRUD.GetList(criteria);
             if (criteria.PagingInfo.TotalPages > 1)
             {
@@ -264,7 +288,7 @@ public class ContentTypeInformation
     {
         var criteria = new FolderCriteria(Ektron.Cms.Common.FolderProperty.FolderPath, Ektron.Cms.Common.EkEnumeration.OrderByDirection.Ascending);
         criteria.AddFilter(Ektron.Cms.Common.FolderProperty.Id, Ektron.Cms.Common.CriteriaFilterOperator.In, folderIds);
-        criteria.PagingInfo = new PagingInfo(99, 1);
+        criteria.PagingInfo = new PagingInfo(-1);
         return criteria;
     }
 
@@ -411,5 +435,14 @@ public class ContentTypeInformation
         var fields = xdoc.Document.Element("fieldlist").Elements("field");
         var paths = fields.Attributes("xpath");
         return paths.Select(p => p.Value).ToArray();
+    }
+
+    private List<List<T>> SliceBy<T>(List<T> source, int sliceSize)
+    {
+        return source
+            .Select((x, i) => new { Index = i, Value = x })
+            .GroupBy(x => x.Index / sliceSize)
+            .Select(x => x.Select(v => v.Value).ToList())
+            .ToList();
     }
 }
